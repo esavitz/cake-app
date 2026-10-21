@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Birthdays shared with you · Cake</title>
+<meta name="description" content="Someone shared birthdays with you. Add them to Cake.">
+<link rel="stylesheet" href="../style.css">
+<style>
+  .people { list-style: none; padding: 0; margin: 0; }
+  .people li { display: flex; align-items: baseline; gap: 10px; padding: 12px 0; border-bottom: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); }
+  .people li:last-child { border-bottom: 0; }
+  .people .name { font-weight: 600; flex: 1; }
+  .people .date { color: var(--muted); }
+  .open { display: block; text-align: center; margin: 20px 0 10px; font-size: 18px; padding: 15px 20px; }
+  .fine { color: var(--muted); font-size: 15px; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <nav><a href="../">‹ Cake</a></nav>
+  <h1 id="title">🎂 Shared with you</h1>
+  <p class="date" id="subtitle"></p>
+
+  <section id="list-card" hidden>
+    <ul class="people" id="people"></ul>
+  </section>
+
+  <a class="button open" id="open" hidden>Open in Cake</a>
+  <p class="fine" id="fine" hidden>Cake shows the list so you can choose who to add.</p>
+</main>
+<script>
+  // The birthdays ride in the #fragment, which the browser never sends to a server.
+  // Format: URL-safe base64 of JSON [{n: name, m: month, d: day, y?: year, k: "birthday"|"anniversary"}].
+  function decode(payload) {
+    try {
+      let b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+      b64 += "=".repeat((4 - (b64.length % 4)) % 4);
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const people = JSON.parse(new TextDecoder().decode(bytes));
+      return Array.isArray(people)
+        ? people.filter(p => typeof p.n === "string" && p.m >= 1 && p.m <= 12 && p.d >= 1 && p.d <= 31)
+        : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  const payload = location.hash.slice(1);
+  const people = payload ? decode(payload) : [];
+
+  if (people.length === 0) {
+    document.getElementById("title").textContent = "🎂 Nothing to add";
+    document.getElementById("subtitle").textContent = "This link is missing its birthdays. Ask the sender to share it again.";
+  } else {
+    const kinds = new Set(people.map(p => p.k === "anniversary" ? "anniversary" : "birthday"));
+    const noun = kinds.size > 1 ? "birthdays & anniversaries"
+      : kinds.has("anniversary") ? (people.length === 1 ? "anniversary" : "anniversaries")
+      : (people.length === 1 ? "birthday" : "birthdays");
+    document.getElementById("title").textContent = `🎂 ${people.length} ${noun} shared with you`;
+    document.getElementById("subtitle").textContent = "Add them to Cake and get a reminder on the day.";
+
+    const list = document.getElementById("people");
+    for (const p of people) {
+      const li = document.createElement("li");
+      const emoji = document.createElement("span");
+      emoji.textContent = p.k === "anniversary" ? "💍" : "🎂";
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = p.n;  // textContent, never innerHTML: names come from the link
+      const date = document.createElement("span");
+      date.className = "date";
+      date.textContent = new Date(2000, p.m - 1, p.d).toLocaleDateString(undefined, { month: "long", day: "numeric" });
+      li.append(emoji, name, date);
+      list.append(li);
+    }
+    document.getElementById("list-card").hidden = false;
+
+    const open = document.getElementById("open");
+    open.href = "cakeday://import?d=" + encodeURIComponent(payload);
+    open.hidden = false;
+    document.getElementById("fine").hidden = false;
+  }
+</script>
+</body>
+</html>

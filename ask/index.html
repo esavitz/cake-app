@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Share your birthday · Cake</title>
+<meta name="description" content="Someone wants to remember your birthday.">
+<link rel="stylesheet" href="../style.css">
+<style>
+  form { display: grid; gap: 14px; }
+  label { display: grid; gap: 6px; font-weight: 600; font-size: 15px; }
+  input, select { font: inherit; font-weight: 400; padding: 12px 14px; border-radius: 12px;
+                  border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent);
+                  background: var(--bg); color: var(--text); width: 100%; box-sizing: border-box; }
+  .row { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+  .optional { color: var(--muted); font-weight: 400; }
+  button.button { border: 0; font: inherit; font-weight: 600; font-size: 18px; padding: 15px 20px; width: 100%; cursor: pointer; }
+  .fine { color: var(--muted); font-size: 15px; text-align: center; margin-top: 12px; }
+  .error { color: #d70015; font-size: 15px; margin: 0; }
+  textarea { font: inherit; width: 100%; box-sizing: border-box; min-height: 120px; padding: 12px; border-radius: 12px;
+             border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); background: var(--bg); color: var(--text); }
+</style>
+</head>
+<body>
+<main>
+  <nav><a href="../">‹ Cake</a></nav>
+  <h1 id="title">🎂 Share your birthday</h1>
+  <p class="date" id="subtitle">Add your birthday, then send it back in a message.</p>
+
+  <section id="form-card">
+    <form id="form" novalidate>
+      <label>Your name
+        <input id="name" autocomplete="name" placeholder="First and last name" required>
+      </label>
+      <div class="row">
+        <label>Month <select id="month"></select></label>
+        <label>Day <select id="day"></select></label>
+      </div>
+      <label>Year <span class="optional">(optional)</span>
+        <input id="year" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="So they know your age">
+      </label>
+      <p class="error" id="error" hidden></p>
+      <button class="button" type="submit" id="send">Send My Birthday</button>
+    </form>
+  </section>
+
+  <section id="fallback" hidden>
+    <h2>Send this message</h2>
+    <p id="fallback-hint">Copy it and paste it into a message.</p>
+    <textarea id="message" readonly></textarea>
+    <button class="button" type="button" id="copy">Copy</button>
+  </section>
+
+  <section id="done" hidden>
+    <h2>Thanks! 🎉</h2>
+    <p id="done-text">Your birthday is on its way.</p>
+  </section>
+
+  <p class="fine">Your birthday is only in the message you send. Nothing is stored.</p>
+</main>
+<script>
+  // Who's asking comes from the #fragment, which the browser never sends to a server.
+  const asker = (new URLSearchParams(location.hash.slice(1)).get("from") || "").trim().slice(0, 40);
+  if (asker) {
+    document.getElementById("title").textContent = `🎂 ${asker} wants to remember your birthday`;
+    document.getElementById("subtitle").textContent = `Add your birthday, then send it back to ${asker}.`;
+    document.getElementById("send").textContent = `Send to ${asker}`;
+    document.getElementById("fallback-hint").textContent = `Copy it and paste it into a message to ${asker}.`;
+    document.getElementById("done-text").textContent = `${asker} can add you to Cake by tapping your message.`;
+  }
+
+  const monthSelect = document.getElementById("month");
+  const daySelect = document.getElementById("day");
+  for (let m = 1; m <= 12; m++) {
+    const name = new Date(2000, m - 1, 1).toLocaleDateString(undefined, { month: "long" });
+    monthSelect.add(new Option(name, m));
+  }
+  function fillDays() {
+    const keep = Number(daySelect.value) || 1;
+    const count = new Date(2000, Number(monthSelect.value), 0).getDate(); // 2000 is a leap year: Feb 29 allowed
+    daySelect.length = 0;
+    for (let d = 1; d <= count; d++) daySelect.add(new Option(d, d));
+    daySelect.value = Math.min(keep, count);
+  }
+  monthSelect.addEventListener("change", fillDays);
+  fillDays();
+
+  // Same format Cake reads: URL-safe base64 of JSON [{n, m, d, y?, k}].
+  function encode(people) {
+    const bytes = new TextEncoder().encode(JSON.stringify(people));
+    let binary = "";
+    bytes.forEach(b => binary += String.fromCharCode(b));
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function showError(text) {
+    const error = document.getElementById("error");
+    error.textContent = text;
+    error.hidden = !text;
+  }
+
+  document.getElementById("form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = document.getElementById("name").value.trim().slice(0, 60);
+    const m = Number(monthSelect.value), d = Number(daySelect.value);
+    const yearText = document.getElementById("year").value.trim();
+    const y = Number(yearText);
+    if (!name) return showError("Add your name.");
+    if (yearText && !(y >= 1900 && y <= new Date().getFullYear())) return showError("Check the year, or leave it blank.");
+    showError("");
+
+    const person = { n: name, m, d, k: "birthday" };
+    if (yearText) person.y = y;
+    const link = new URL("../add/", location.href).href + "#" + encode([person]);
+    const date = new Date(2000, m - 1, d).toLocaleDateString(undefined, { month: "long", day: "numeric" });
+    const text = `🎂 ${name}'s birthday is ${date}. Add it to Cake: ${link}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ text });
+        document.getElementById("form-card").hidden = true;
+        document.getElementById("done").hidden = false;
+        return;
+      } catch (e) {
+        if (e.name === "AbortError") return; // they closed the share sheet
+      }
+    }
+    document.getElementById("message").value = text;
+    document.getElementById("form-card").hidden = true;
+    document.getElementById("fallback").hidden = false;
+  });
+
+  document.getElementById("copy").addEventListener("click", async () => {
+    const box = document.getElementById("message");
+    try { await navigator.clipboard.writeText(box.value); } catch (e) { box.select(); document.execCommand("copy"); }
+    document.getElementById("copy").textContent = "Copied";
+  });
+</script>
+</body>
+</html>
